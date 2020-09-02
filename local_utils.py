@@ -141,60 +141,71 @@ def reconstruct(I, Iresized, Yr, lp_threshold):
     labels = []
     labels_frontal = []
 
-    for i in range(len(xx)):
-        x, y = xx[i], yy[i]
-        affine = Affines[x, y]
-        prob = Probs[x, y]
+    if (len(xx)!=0):
+        for i in range(len(xx)):
+            x, y = xx[i], yy[i]
+            affine = Affines[x, y]
+            prob = Probs[x, y]
 
-        mn = np.array([float(y) + 0.5, float(x) + 0.5])
+            mn = np.array([float(y) + 0.5, float(x) + 0.5])
 
-        # affine transformation matrix
-        A = np.reshape(affine, (2, 3))
-        A[0, 0] = max(A[0, 0], 0)
-        A[1, 1] = max(A[1, 1], 0)
-        # identity transformation
-        B = np.zeros((2, 3))
-        B[0, 0] = max(A[0, 0], 0)
-        B[1, 1] = max(A[1, 1], 0)
+            # affine transformation matrix
+            A = np.reshape(affine, (2, 3))
+            A[0, 0] = max(A[0, 0], 0)
+            A[1, 1] = max(A[1, 1], 0)
+            # identity transformation
+            B = np.zeros((2, 3))
+            B[0, 0] = max(A[0, 0], 0)
+            B[1, 1] = max(A[1, 1], 0)
 
-        pts = np.array(A*base(vxx, vyy))
-        pts_frontal = np.array(B*base(vxx, vyy))
+            pts = np.array(A*base(vxx, vyy))
+            pts_frontal = np.array(B*base(vxx, vyy))
 
-        pts_prop = normal(pts, side, mn, MN)
-        frontal = normal(pts_frontal, side, mn, MN)
+            pts_prop = normal(pts, side, mn, MN)
+            frontal = normal(pts_frontal, side, mn, MN)
 
-        labels.append(DLabel(0, pts_prop, prob))
-        labels_frontal.append(DLabel(0, frontal, prob))
-        
-    final_labels = nms(labels, 0.1)
-    final_labels_frontal = nms(labels_frontal, 0.1)
+            labels.append(DLabel(0, pts_prop, prob))
+            labels_frontal.append(DLabel(0, frontal, prob))
 
-    #print(final_labels_frontal)
-    assert final_labels_frontal, "No License plate is founded!"
+        final_labels = nms(labels, 0.1)
+        final_labels_frontal = nms(labels_frontal, 0.1)
 
-    # LP size and type
-    out_size, lp_type = (two_lines, 2) if ((final_labels_frontal[0].wh()[0] / final_labels_frontal[0].wh()[1]) < 1.7) else (one_line, 1)
+        #print(final_labels_frontal)
+        assert final_labels_frontal, "No License plate is founded!"
 
-    TLp = []
-    Cor = []
-    if len(final_labels):
-        final_labels.sort(key=lambda x: x.prob(), reverse=True)
-        for _, label in enumerate(final_labels):
-            t_ptsh = getRectPts(0, 0, out_size[0], out_size[1])
-            ptsh = np.concatenate((label.pts * getWH(I.shape).reshape((2, 1)), np.ones((1, 4))))
-            H = find_T_matrix(ptsh, t_ptsh)
-            Ilp = cv2.warpPerspective(I, H, out_size, borderValue=0)
-            TLp.append(Ilp)
-            Cor.append(ptsh)
+        # LP size and type
+        out_size, lp_type = (two_lines, 2) if ((final_labels_frontal[0].wh()[0] / final_labels_frontal[0].wh()[1]) < 1.7) else (one_line, 1)
+
+        TLp = []
+        Cor = []
+        if len(final_labels):
+            final_labels.sort(key=lambda x: x.prob(), reverse=True)
+            for _, label in enumerate(final_labels):
+                t_ptsh = getRectPts(0, 0, out_size[0], out_size[1])
+                ptsh = np.concatenate((label.pts * getWH(I.shape).reshape((2, 1)), np.ones((1, 4))))
+                H = find_T_matrix(ptsh, t_ptsh)
+                Ilp = cv2.warpPerspective(I, H, out_size, borderValue=0)
+                TLp.append(Ilp)
+                Cor.append(ptsh)
+    else:
+        final_labels = ""
+        TLp = None
+        lp_type = None
+        Cor = None
     return final_labels, TLp, lp_type, Cor
 
 def detect_lp(model, I, max_dim, lp_threshold):
     min_dim_img = min(I.shape[:2])
     factor = float(max_dim) / min_dim_img
     w, h = (np.array(I.shape[1::-1], dtype=float) * factor).astype(int).tolist()
+    w= 608
+    h =608
     Iresized = cv2.resize(I, (w, h))
+    print(f'Iresize shape : {Iresized.shape}')
+    #Iresized = I
     T = Iresized.copy()
     T = T.reshape((1, T.shape[0], T.shape[1], T.shape[2]))
+    #print(T.shape)
     Yr = model.predict(T)
     Yr = np.squeeze(Yr)
     #print(Yr.shape)
